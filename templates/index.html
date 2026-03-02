@@ -1,0 +1,546 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>TeleStorage — Simpan File di Telegram</title>
+  <style>
+    /* ── Reset & Base ── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #0f1117;
+      --surface: #1a1d27;
+      --surface2: #22263a;
+      --border: #2e3350;
+      --accent: #229ED9;
+      --accent-hover: #1a8bc2;
+      --accent-light: #229ed920;
+      --green: #26a67d;
+      --red: #e05555;
+      --text: #e8eaf0;
+      --muted: #6b7280;
+      --radius: 12px;
+    }
+    html { font-size: 15px; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      padding: 2rem 1rem;
+    }
+
+    /* ── Layout ── */
+    .container { max-width: 860px; margin: 0 auto; }
+    header { text-align: center; margin-bottom: 2.5rem; }
+    header .logo { font-size: 2.4rem; margin-bottom: .4rem; }
+    header h1 { font-size: 1.8rem; font-weight: 700; letter-spacing: -.5px; }
+    header p { color: var(--muted); margin-top: .4rem; font-size: .95rem; }
+
+    /* ── Upload Zone ── */
+    .upload-card {
+      background: var(--surface);
+      border: 2px dashed var(--border);
+      border-radius: var(--radius);
+      padding: 2.5rem;
+      text-align: center;
+      transition: border-color .2s, background .2s;
+      cursor: pointer;
+      position: relative;
+    }
+    .upload-card.drag-over {
+      border-color: var(--accent);
+      background: var(--accent-light);
+    }
+    .upload-card input[type="file"] { display: none; }
+    .upload-icon { font-size: 3rem; margin-bottom: .8rem; display: block; }
+    .upload-card h2 { font-size: 1.1rem; font-weight: 600; margin-bottom: .4rem; }
+    .upload-card p { color: var(--muted); font-size: .88rem; }
+
+    /* ── Selected Files Preview ── */
+    .selected-files {
+      margin-top: 1rem; text-align: left;
+      max-height: 160px; overflow-y: auto;
+      position: relative; z-index: 2;
+    }
+    .selected-file {
+      display: flex; align-items: center; gap: .6rem;
+      background: var(--surface2); border-radius: 8px;
+      padding: .45rem .7rem; margin-bottom: .4rem;
+      font-size: .85rem;
+    }
+    .selected-file .sf-name {
+      flex: 1; min-width: 0;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .selected-file .sf-size { color: var(--muted); font-size: .78rem; flex-shrink: 0; }
+    .selected-file .sf-remove {
+      background: none; border: none; color: var(--muted); cursor: pointer;
+      font-size: 1rem; padding: 0 .2rem; line-height: 1; flex-shrink: 0;
+      transition: color .2s;
+    }
+    .selected-file .sf-remove:hover { color: var(--red); }
+    .clear-all {
+      background: none; border: none; color: var(--red); cursor: pointer;
+      font-size: .8rem; font-weight: 600; margin-top: .3rem;
+      position: relative; z-index: 2;
+      transition: opacity .2s;
+    }
+    .clear-all:hover { opacity: .7; }
+    .btn {
+      display: inline-flex; align-items: center; gap: .4rem;
+      background: var(--accent); color: #fff;
+      border: none; border-radius: 8px;
+      padding: .6rem 1.4rem; font-size: .9rem; font-weight: 600;
+      cursor: pointer; transition: background .2s;
+      margin-top: 1.2rem;
+      position: relative; z-index: 2;
+    }
+    .btn:hover { background: var(--accent-hover); }
+    .btn:disabled { opacity: .5; cursor: not-allowed; }
+    .btn-danger { background: var(--red); }
+    .btn-danger:hover { background: #c84444; }
+
+    /* ── Progress ── */
+    .progress-wrap { margin-top: 1.2rem; display: none; position: relative; z-index: 2; }
+    .progress-wrap.show { display: block; }
+    .progress-bar-bg {
+      background: var(--surface2); border-radius: 99px; height: 8px; overflow: hidden;
+    }
+    .progress-bar-fill {
+      height: 100%; background: var(--accent);
+      border-radius: 99px; width: 0%;
+      transition: width .3s;
+    }
+    .progress-bar-fill.pulse {
+      animation: pulse-bar 1.5s ease-in-out infinite;
+    }
+    @keyframes pulse-bar {
+      0%, 100% { opacity: 1; }
+      50% { opacity: .5; }
+    }
+    .progress-label { font-size: .82rem; color: var(--muted); margin-top: .4rem; }
+    .progress-speed { font-size: .78rem; color: var(--muted); margin-top: .15rem; }
+
+    /* ── Toast ── */
+    #toast {
+      position: fixed; bottom: 2rem; right: 2rem;
+      padding: .8rem 1.4rem; border-radius: 10px;
+      font-size: .9rem; font-weight: 500;
+      opacity: 0; pointer-events: none;
+      transition: opacity .3s;
+      z-index: 9999;
+    }
+    #toast.show { opacity: 1; }
+    #toast.success { background: var(--green); color: #fff; }
+    #toast.error   { background: var(--red); color: #fff; }
+
+    /* ── File List ── */
+    .section-header {
+      display: flex; justify-content: space-between; align-items: center;
+      margin: 2.5rem 0 1rem;
+    }
+    .section-header h2 { font-size: 1.15rem; font-weight: 700; }
+    .badge {
+      background: var(--surface2); color: var(--muted);
+      font-size: .78rem; padding: .2rem .6rem; border-radius: 99px;
+    }
+    #file-list { display: flex; flex-direction: column; gap: .7rem; }
+    .file-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 1rem 1.2rem;
+      display: flex; align-items: center; gap: 1rem;
+      transition: border-color .2s;
+    }
+    .file-card:hover { border-color: var(--accent); }
+    .file-emoji { font-size: 1.8rem; flex-shrink: 0; width: 2.4rem; text-align: center; }
+    .file-info { flex: 1; min-width: 0; }
+    .file-name {
+      font-weight: 600; font-size: .95rem;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .file-meta { color: var(--muted); font-size: .8rem; margin-top: .2rem; }
+    .file-actions { display: flex; gap: .5rem; flex-shrink: 0; }
+    .btn-sm {
+      padding: .35rem .85rem; font-size: .82rem; border-radius: 7px;
+      border: none; cursor: pointer; font-weight: 600; transition: background .2s;
+    }
+    .btn-dl  { background: var(--accent); color: #fff; }
+    .btn-dl:hover { background: var(--accent-hover); }
+    .btn-copy { background: var(--surface2); color: var(--accent); }
+    .btn-copy:hover { background: var(--accent); color: #fff; }
+    .btn-del { background: var(--surface2); color: var(--muted); }
+    .btn-del:hover { background: var(--red); color: #fff; }
+
+    /* ── Empty State ── */
+    .empty {
+      text-align: center; padding: 3rem 1rem;
+      color: var(--muted); font-size: .95rem;
+    }
+    .empty .big { font-size: 3rem; margin-bottom: .8rem; }
+
+    /* ── Spinner ── */
+    .spinner {
+      width: 20px; height: 20px;
+      border: 2.5px solid #ffffff40;
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spin .7s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+<div class="container">
+
+  <!-- Header -->
+  <header>
+    <div class="logo">📦</div>
+    <h1>TeleStorage</h1>
+    <p>Upload file apa saja — disimpan gratis di Telegram</p>
+  </header>
+
+  <!-- Upload Card -->
+  <div class="upload-card" id="drop-zone">
+    <input type="file" id="file-input" multiple />
+    <span class="upload-icon">☁️</span>
+    <h2>Drag &amp; drop file ke sini</h2>
+    <p>atau klik untuk memilih file (maks. 20 GB per file)</p>
+
+    <!-- Selected Files Preview -->
+    <div class="selected-files" id="selected-files"></div>
+
+    <button class="btn" id="upload-btn" disabled>
+      <span id="btn-label">Pilih File</span>
+    </button>
+    <br>
+    <button class="clear-all" id="clear-btn" style="display:none;">✕ Hapus semua pilihan</button>
+
+    <!-- Progress -->
+    <div class="progress-wrap" id="progress-wrap">
+      <div class="progress-bar-bg">
+        <div class="progress-bar-fill" id="progress-fill"></div>
+      </div>
+      <div class="progress-label" id="progress-label">Uploading…</div>
+      <div class="progress-speed" id="progress-speed"></div>
+    </div>
+  </div>
+
+  <!-- File List -->
+  <div class="section-header">
+    <h2>File Tersimpan</h2>
+    <span class="badge" id="file-count">0 file</span>
+  </div>
+  <div id="file-list">
+    <div class="empty">
+      <div class="big">🗄️</div>
+      Memuat daftar file…
+    </div>
+  </div>
+
+</div>
+
+<!-- Toast -->
+<div id="toast"></div>
+
+<script>
+// ── Utils ──────────────────────────────────────────────────────────────────
+const $ = id => document.getElementById(id);
+const fmtSize = b => b < 1024 ? b + ' B' : b < 1048576 ? (b/1024).toFixed(1) + ' KB' : b < 1073741824 ? (b/1048576).toFixed(1) + ' MB' : (b/1073741824).toFixed(2) + ' GB';
+const fmtDate = iso => new Date(iso).toLocaleString('id-ID', {day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit'});
+
+const fileEmoji = mime => {
+  if (!mime) return '📄';
+  if (mime.startsWith('image/')) return '🖼️';
+  if (mime.startsWith('video/')) return '🎬';
+  if (mime.startsWith('audio/')) return '🎵';
+  if (mime.includes('pdf'))      return '📕';
+  if (mime.includes('zip') || mime.includes('rar') || mime.includes('7z')) return '🗜️';
+  if (mime.includes('word') || mime.includes('doc')) return '📝';
+  if (mime.includes('excel') || mime.includes('sheet')) return '📊';
+  if (mime.includes('powerpoint') || mime.includes('presentation')) return '📊';
+  if (mime.includes('text/')) return '📃';
+  return '📄';
+};
+
+let toastTimer;
+function showToast(msg, type = 'success') {
+  const t = $('toast');
+  t.textContent = msg;
+  t.className = `show ${type}`;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { t.className = ''; }, 3000);
+}
+
+// ── File Input ─────────────────────────────────────────────────────────────
+const fileInput  = $('file-input');
+const uploadBtn  = $('upload-btn');
+const btnLabel   = $('btn-label');
+const dropZone   = $('drop-zone');
+const clearBtn   = $('clear-btn');
+const selectedFilesEl = $('selected-files');
+
+let selectedFiles = [];
+
+// Click card to open file picker (but not when clicking buttons/preview)
+dropZone.addEventListener('click', e => {
+  if (e.target.closest('.btn, .clear-all, .sf-remove, .selected-files')) return;
+  fileInput.click();
+});
+
+fileInput.addEventListener('change', () => {
+  addFiles(Array.from(fileInput.files));
+  fileInput.value = '';
+});
+
+function addFiles(newFiles) {
+  for (const f of newFiles) {
+    if (!selectedFiles.some(s => s.name === f.name && s.size === f.size)) {
+      selectedFiles.push(f);
+    }
+  }
+  renderSelected();
+}
+
+function removeFile(idx) {
+  selectedFiles.splice(idx, 1);
+  renderSelected();
+}
+
+function clearFiles() {
+  selectedFiles = [];
+  fileInput.value = '';
+  renderSelected();
+}
+
+clearBtn.addEventListener('click', e => { e.stopPropagation(); clearFiles(); });
+
+function renderSelected() {
+  if (selectedFiles.length === 0) {
+    selectedFilesEl.innerHTML = '';
+    clearBtn.style.display = 'none';
+    uploadBtn.disabled = true;
+    btnLabel.textContent = 'Pilih File';
+    return;
+  }
+
+  const totalSize = selectedFiles.reduce((a, f) => a + f.size, 0);
+  selectedFilesEl.innerHTML = selectedFiles.map((f, i) => `
+    <div class="selected-file">
+      <span class="sf-name" title="${f.name}">${f.name}</span>
+      <span class="sf-size">${fmtSize(f.size)}</span>
+      <button class="sf-remove" onclick="event.stopPropagation(); removeFile(${i})" title="Hapus">✕</button>
+    </div>
+  `).join('');
+
+  clearBtn.style.display = 'inline-block';
+  uploadBtn.disabled = false;
+  btnLabel.textContent = `Upload ${selectedFiles.length} file (${fmtSize(totalSize)})`;
+}
+
+// Drag & Drop
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+dropZone.addEventListener('dragleave', e => {
+  if (!dropZone.contains(e.relatedTarget)) dropZone.classList.remove('drag-over');
+});
+dropZone.addEventListener('drop', e => {
+  e.preventDefault();
+  dropZone.classList.remove('drag-over');
+  addFiles(Array.from(e.dataTransfer.files));
+});
+
+// ── Upload ─────────────────────────────────────────────────────────────────
+uploadBtn.addEventListener('click', async e => {
+  e.stopPropagation();
+  e.preventDefault();
+  if (!selectedFiles.length) return;
+
+  uploadBtn.disabled = true;
+  fileInput.disabled = true;
+  clearBtn.style.display = 'none';
+  selectedFilesEl.innerHTML = '';
+  const prog = $('progress-wrap');
+  const fill = $('progress-fill');
+  const label = $('progress-label');
+  const speed = $('progress-speed');
+  prog.classList.add('show');
+  fill.classList.remove('pulse');
+
+  let done = 0;
+  const total = selectedFiles.length;
+  const errors = [];
+
+  for (const file of selectedFiles) {
+    label.textContent = `Mengupload: ${file.name} (${done+1}/${total})`;
+    speed.textContent = '';
+    fill.style.width = `${(done / total) * 100}%`;
+    fill.classList.remove('pulse');
+
+    try {
+      await new Promise((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        const fd = new FormData();
+        fd.append('file', file);
+
+        let lastLoaded = 0, lastTime = Date.now();
+
+        xhr.upload.addEventListener('progress', ev => {
+          if (ev.lengthComputable) {
+            const now = Date.now();
+            const filePct = ev.loaded / ev.total;
+            const overallPct = ((done + filePct) / total) * 100;
+            fill.style.width = `${overallPct}%`;
+
+            const dt = (now - lastTime) / 1000;
+            if (dt >= 0.5) {
+              const bps = (ev.loaded - lastLoaded) / dt;
+              lastLoaded = ev.loaded;
+              lastTime = now;
+              const remaining = (ev.total - ev.loaded) / bps;
+              const eta = remaining < 60 ? `${Math.ceil(remaining)}d` : `${Math.ceil(remaining/60)}m`;
+              speed.textContent = `${fmtSize(Math.round(bps))}/s — sisa ~${eta}`;
+            }
+
+            if (filePct >= 1) {
+              fill.classList.add('pulse');
+              label.textContent = `⏳ Mengirim ke Telegram: ${file.name} (${done+1}/${total})`;
+              speed.textContent = 'Menunggu respons server…';
+            } else {
+              fill.classList.remove('pulse');
+              label.textContent = `Mengupload: ${file.name} — ${fmtSize(ev.loaded)} / ${fmtSize(ev.total)} (${done+1}/${total})`;
+            }
+          }
+        });
+
+        xhr.addEventListener('load', () => {
+          fill.classList.remove('pulse');
+          if (xhr.status >= 200 && xhr.status < 300) {
+            resolve();
+          } else {
+            try {
+              const json = JSON.parse(xhr.responseText);
+              reject(new Error(json.detail || 'Error'));
+            } catch { reject(new Error('Error')); }
+          }
+        });
+
+        xhr.addEventListener('error', () => reject(new Error('Gagal terhubung ke server')));
+        xhr.open('POST', '/upload');
+        xhr.send(fd);
+      });
+    } catch (err) {
+      errors.push(`${file.name}: ${err.message}`);
+    }
+    done++;
+  }
+
+  fill.style.width = '100%';
+  fill.classList.remove('pulse');
+  label.textContent = 'Selesai!';
+  speed.textContent = '';
+
+  setTimeout(() => {
+    prog.classList.remove('show');
+    fill.style.width = '0%';
+  }, 1000);
+
+  if (errors.length) {
+    showToast(errors[0], 'error');
+  } else {
+    showToast(`✅ ${total} file berhasil diupload!`, 'success');
+  }
+
+  selectedFiles = [];
+  fileInput.value = '';
+  uploadBtn.disabled = true;
+  fileInput.disabled = false;
+  btnLabel.textContent = 'Pilih File';
+  clearBtn.style.display = 'none';
+  loadFiles();
+});
+
+// ── Load Files ─────────────────────────────────────────────────────────────
+async function loadFiles() {
+  const list = $('file-list');
+  try {
+    const res = await fetch('/files');
+    const { files } = await res.json();
+    $('file-count').textContent = `${files.length} file`;
+
+    if (!files.length) {
+      list.innerHTML = `<div class="empty"><div class="big">🗄️</div>Belum ada file yang diupload.</div>`;
+      return;
+    }
+
+    list.innerHTML = files.map(f => `
+      <div class="file-card" id="card-${f.id}">
+        <div class="file-emoji">${fileEmoji(f.mime)}</div>
+        <div class="file-info">
+          <div class="file-name" title="${f.filename}">${f.filename}</div>
+          <div class="file-meta">${fmtSize(f.size)} &nbsp;·&nbsp; ${fmtDate(f.uploaded_at)}</div>
+        </div>
+        <div class="file-actions">
+          <button class="btn-sm btn-dl" onclick="downloadFile('${f.id}','${f.filename}')">⬇ Download</button>
+          <button class="btn-sm btn-copy" onclick="copyLink('${f.id}')">🔗 Copy Link</button>
+          <button class="btn-sm btn-del" onclick="deleteFile('${f.id}','${f.filename}')">🗑</button>
+        </div>
+      </div>
+    `).join('');
+  } catch {
+    list.innerHTML = `<div class="empty"><div class="big">⚠️</div>Gagal memuat daftar file.</div>`;
+  }
+}
+
+// ── Copy Link ──────────────────────────────────────────────────────────────
+function copyLink(id) {
+  const url = `${location.origin}/files/${id}/download`;
+  navigator.clipboard.writeText(url).then(() => {
+    showToast('🔗 Link berhasil disalin!', 'success');
+  }).catch(() => {
+    // Fallback for non-HTTPS
+    const input = document.createElement('input');
+    input.value = url;
+    document.body.appendChild(input);
+    input.select();
+    document.execCommand('copy');
+    document.body.removeChild(input);
+    showToast('🔗 Link berhasil disalin!', 'success');
+  });
+}
+
+// ── Download ───────────────────────────────────────────────────────────────
+function downloadFile(id, name) {
+  showToast(`⏳ Mengambil ${name} dari Telegram…`, 'success');
+  const a = document.createElement('a');
+  a.href = `/files/${id}/download`;
+  a.download = name;
+  a.click();
+}
+
+// ── Delete ─────────────────────────────────────────────────────────────────
+async function deleteFile(id, name) {
+  if (!confirm(`Hapus "${name}" dari daftar?`)) return;
+  try {
+    const res = await fetch(`/files/${id}`, { method: 'DELETE' });
+    if (res.ok) {
+      showToast(`🗑️ "${name}" dihapus`, 'success');
+      const card = document.getElementById(`card-${id}`);
+      if (card) card.remove();
+      const remaining = document.querySelectorAll('.file-card').length;
+      $('file-count').textContent = `${remaining} file`;
+      if (!remaining) loadFiles();
+    } else {
+      showToast('Gagal menghapus file', 'error');
+    }
+  } catch {
+    showToast('Error saat menghapus', 'error');
+  }
+}
+
+// Init
+loadFiles();
+</script>
+</body>
+</html>

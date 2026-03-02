@@ -1,0 +1,34 @@
+# Environment
+.env
+.venv/
+venv/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Database & session
+telestorage.db
+telestorage.db-wal
+telestorage.db-shm
+files_db.json
+files_db.json.bak
+*.session
+*.session-journal
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Ruff
+.ruff_cache/
+
+# Temp
+testfile/
