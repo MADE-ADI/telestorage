@@ -1,6 +1,8 @@
 import os
 import json
 import uuid
+import hmac
+import hashlib
 import asyncio
 import mimetypes
 import tempfile
@@ -11,8 +13,8 @@ from contextlib import asynccontextmanager
 import aiofiles
 import aiosqlite
 from pyrogram import Client
-from fastapi import FastAPI, UploadFile, File, HTTPException, Request
-from fastapi.responses import HTMLResponse, StreamingResponse, JSONResponse
+from fastapi import FastAPI, UploadFile, File, HTTPException, Request, Form, Cookie
+from fastapi.responses import HTMLResponse, StreamingResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from dotenv import load_dotenv
@@ -24,6 +26,8 @@ BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
 CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "")
 API_ID = os.getenv("TELEGRAM_API_ID", "")
 API_HASH = os.getenv("TELEGRAM_API_HASH", "")
+ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "admin")
+ADMIN_SECRET = hashlib.sha256(f"telestorage-{ADMIN_PASSWORD}".encode()).hexdigest()
 DB_PATH = "telestorage.db"
 JSON_DB_PATH = Path("files_db.json")
 CHUNK_SIZE = 1900 * 1024 * 1024  # 1.9 GB per chunk (safely under 2GB bot limit)
@@ -203,7 +207,7 @@ async def lifespan(_app):
 
 
 # ── App ──────────────────────────────────────────────────────────────────────
-app = FastAPI(title="TeleStorage", version="2.0.0", lifespan=lifespan)
+app = FastAPI(title="TeleStorage", version="2.0.0", lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None)
 app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
 
@@ -292,7 +296,7 @@ async def index(request: Request):
 
 
 @app.post("/upload")
-async def upload_file(file: UploadFile = File(...)):
+async def upload_file(request: Request, file: UploadFile = File(...)):
     """Upload file → split if needed → send to Telegram via MTProto."""
     temp_path = TEMP_DIR / f"{uuid.uuid4()}_{file.filename}"
     size = 0
@@ -324,7 +328,14 @@ async def upload_file(file: UploadFile = File(...)):
     await db_insert_file(record, parts)
     record["parts"] = parts
 
-    return JSONResponse({"success": True, "file": record})
+    base_url = str(request.base_url).rstrip("/")
+    download_url = f"{base_url}/files/{record['id']}/download"
+
+    return JSONResponse({
+        "success": True,
+        "file": record,
+        "download_url": download_url,
+    })
 
 
 @app.get("/files")
@@ -392,9 +403,19 @@ async def download_file(file_id: str):
     return StreamingResponse(stream_parts(), headers=headers)
 
 
+def _is_admin(admin_token: str | None) -> bool:
+    """Check if the admin_token cookie is valid."""
+    if not admin_token:
+        return False
+    return hmac.compare_digest(admin_token, ADMIN_SECRET)
+
+
 @app.delete("/files/{file_id}")
-async def delete_file(file_id: str):
-    """Remove file record and delete all part messages from Telegram."""
+async def delete_file(file_id: str, admin_token: str | None = Cookie(default=None)):
+    """Remove file record and delete all part messages from Telegram. Admin only."""
+    if not _is_admin(admin_token):
+        raise HTTPException(403, "Admin access required")
+
     parts = await db_delete_file(file_id)
     if not parts:
         raise HTTPException(404, "File not found")
@@ -406,6 +427,33 @@ async def delete_file(file_id: str):
             pass
 
     return {"success": True, "message": "File deleted"}
+
+
+# ── Admin Routes ─────────────────────────────────────────────────────────────
+
+@app.get("/admin", response_class=HTMLResponse)
+async def admin_page(request: Request, admin_token: str | None = Cookie(default=None)):
+    if not _is_admin(admin_token):
+        return templates.TemplateResponse("admin_login.html", {"request": request})
+    return templates.TemplateResponse("admin.html", {"request": request})
+
+
+@app.post("/admin/login")
+async def admin_login(password: str = Form(...)):
+    if password != ADMIN_PASSWORD:
+        return HTMLResponse(
+            '<script>alert("Password salah!");window.location="/admin";</script>'
+        )
+    response = RedirectResponse("/admin", status_code=303)
+    response.set_cookie("admin_token", ADMIN_SECRET, httponly=True, samesite="strict")
+    return response
+
+
+@app.post("/admin/logout")
+async def admin_logout():
+    response = RedirectResponse("/admin", status_code=303)
+    response.delete_cookie("admin_token")
+    return response
 
 
 if __name__ == "__main__":

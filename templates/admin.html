@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Admin Panel — TeleStorage</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #0f1117; --surface: #1a1d27; --surface2: #22263a;
+      --border: #2e3350; --accent: #229ED9; --accent-hover: #1a8bc2;
+      --green: #26a67d; --red: #e05555;
+      --text: #e8eaf0; --muted: #6b7280; --radius: 12px;
+    }
+    html { font-size: 15px; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: var(--bg); color: var(--text);
+      min-height: 100vh; padding: 2rem 1rem;
+    }
+    .container { max-width: 900px; margin: 0 auto; }
+
+    /* ── Top Bar ── */
+    .top-bar {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 2rem;
+    }
+    .top-bar .left { display: flex; align-items: center; gap: .8rem; }
+    .top-bar .logo { font-size: 1.6rem; }
+    .top-bar h1 { font-size: 1.3rem; font-weight: 700; }
+    .top-bar .tag {
+      background: var(--red); color: #fff; font-size: .7rem;
+      padding: .15rem .5rem; border-radius: 99px; font-weight: 700;
+    }
+    .top-bar .actions { display: flex; gap: .5rem; }
+    .btn-outline {
+      background: none; border: 1px solid var(--border); color: var(--muted);
+      padding: .4rem .9rem; border-radius: 8px; font-size: .85rem;
+      cursor: pointer; text-decoration: none; transition: all .2s;
+    }
+    .btn-outline:hover { border-color: var(--text); color: var(--text); }
+
+    /* ── Stats ── */
+    .stats {
+      display: flex; gap: 1rem; margin-bottom: 1.5rem;
+    }
+    .stat-card {
+      flex: 1; background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 1rem 1.2rem;
+    }
+    .stat-card .label { font-size: .78rem; color: var(--muted); margin-bottom: .3rem; }
+    .stat-card .value { font-size: 1.4rem; font-weight: 700; }
+
+    /* ── Search ── */
+    .search-bar {
+      width: 100%; padding: .6rem 1rem; font-size: .9rem;
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 8px; color: var(--text); outline: none;
+      margin-bottom: 1rem; transition: border-color .2s;
+    }
+    .search-bar:focus { border-color: var(--accent); }
+
+    /* ── Table ── */
+    .file-table {
+      width: 100%; border-collapse: separate; border-spacing: 0;
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); overflow: hidden;
+    }
+    .file-table th {
+      text-align: left; padding: .7rem 1rem; font-size: .78rem;
+      color: var(--muted); font-weight: 600; text-transform: uppercase;
+      letter-spacing: .5px; background: var(--surface2);
+      border-bottom: 1px solid var(--border);
+    }
+    .file-table td {
+      padding: .65rem 1rem; font-size: .88rem;
+      border-bottom: 1px solid var(--border);
+    }
+    .file-table tr:last-child td { border-bottom: none; }
+    .file-table tr:hover td { background: var(--surface2); }
+    .fname {
+      max-width: 280px; white-space: nowrap;
+      overflow: hidden; text-overflow: ellipsis; font-weight: 500;
+    }
+    .fmuted { color: var(--muted); font-size: .82rem; }
+
+    .btn-sm {
+      padding: .3rem .7rem; font-size: .78rem; border-radius: 6px;
+      border: none; cursor: pointer; font-weight: 600; transition: background .2s;
+    }
+    .btn-dl  { background: var(--accent); color: #fff; }
+    .btn-dl:hover { background: var(--accent-hover); }
+    .btn-del { background: var(--surface2); color: var(--red); }
+    .btn-del:hover { background: var(--red); color: #fff; }
+    .btn-del-all { background: var(--red); color: #fff; margin-left: .5rem; }
+    .btn-del-all:hover { background: #c84444; }
+
+    .actions-cell { display: flex; gap: .4rem; }
+
+    /* ── Toast ── */
+    #toast {
+      position: fixed; bottom: 2rem; right: 2rem;
+      padding: .8rem 1.4rem; border-radius: 10px;
+      font-size: .9rem; font-weight: 500;
+      opacity: 0; pointer-events: none;
+      transition: opacity .3s; z-index: 9999;
+    }
+    #toast.show { opacity: 1; }
+    #toast.success { background: var(--green); color: #fff; }
+    #toast.error   { background: var(--red); color: #fff; }
+
+    .empty { text-align: center; padding: 3rem; color: var(--muted); }
+    .empty .big { font-size: 3rem; margin-bottom: .5rem; }
+
+    /* ── Checkbox ── */
+    .cb { width: 16px; height: 16px; accent-color: var(--accent); cursor: pointer; }
+  </style>
+</head>
+<body>
+<div class="container">
+
+  <!-- Top Bar -->
+  <div class="top-bar">
+    <div class="left">
+      <span class="logo">📦</span>
+      <h1>TeleStorage</h1>
+      <span class="tag">ADMIN</span>
+    </div>
+    <div class="actions">
+      <a href="/" class="btn-outline">← Beranda</a>
+      <form method="POST" action="/admin/logout" style="display:inline;">
+        <button type="submit" class="btn-outline">Logout</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Stats -->
+  <div class="stats">
+    <div class="stat-card">
+      <div class="label">Total File</div>
+      <div class="value" id="stat-count">—</div>
+    </div>
+    <div class="stat-card">
+      <div class="label">Total Ukuran</div>
+      <div class="value" id="stat-size">—</div>
+    </div>
+  </div>
+
+  <!-- Search & Bulk -->
+  <div style="display:flex; gap:.5rem; align-items:center;">
+    <input class="search-bar" id="search" placeholder="🔍 Cari file…" style="margin-bottom:0; flex:1;" />
+    <button class="btn-sm btn-del-all" id="bulk-delete" style="display:none;" onclick="bulkDelete()">🗑 Hapus Terpilih (<span id="bulk-count">0</span>)</button>
+  </div>
+  <div style="height:.8rem;"></div>
+
+  <!-- Table -->
+  <div id="table-wrap"></div>
+
+</div>
+
+<div id="toast"></div>
+
+<script>
+const $ = id => document.getElementById(id);
+const fmtSize = b => b < 1024 ? b + ' B' : b < 1048576 ? (b/1024).toFixed(1) + ' KB' : b < 1073741824 ? (b/1048576).toFixed(1) + ' MB' : (b/1073741824).toFixed(2) + ' GB';
+const fmtDate = iso => new Date(iso).toLocaleString('id-ID', {day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit'});
+
+let toastTimer;
+function showToast(msg, type = 'success') {
+  const t = $('toast');
+  t.textContent = msg;
+  t.className = `show ${type}`;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { t.className = ''; }, 3000);
+}
+
+let allFiles = [];
+let selected = new Set();
+
+async function loadFiles() {
+  try {
+    const res = await fetch('/files');
+    const { files } = await res.json();
+    allFiles = files;
+    renderStats();
+    renderTable(allFiles);
+  } catch {
+    $('table-wrap').innerHTML = `<div class="empty"><div class="big">⚠️</div>Gagal memuat daftar file.</div>`;
+  }
+}
+
+function renderStats() {
+  $('stat-count').textContent = allFiles.length;
+  const totalSize = allFiles.reduce((a, f) => a + f.size, 0);
+  $('stat-size').textContent = fmtSize(totalSize);
+}
+
+function renderTable(files) {
+  if (!files.length) {
+    $('table-wrap').innerHTML = `<div class="empty"><div class="big">🗄️</div>Tidak ada file.</div>`;
+    return;
+  }
+
+  $('table-wrap').innerHTML = `
+    <table class="file-table">
+      <thead>
+        <tr>
+          <th><input type="checkbox" class="cb" id="select-all" onchange="toggleAll(this.checked)" /></th>
+          <th>Nama File</th>
+          <th>Ukuran</th>
+          <th>Tanggal</th>
+          <th>Aksi</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${files.map(f => `
+          <tr id="row-${f.id}">
+            <td><input type="checkbox" class="cb" data-id="${f.id}" onchange="toggleSelect('${f.id}', this.checked)" ${selected.has(f.id)?'checked':''} /></td>
+            <td><div class="fname" title="${f.filename}">${f.filename}</div></td>
+            <td class="fmuted">${fmtSize(f.size)}</td>
+            <td class="fmuted">${fmtDate(f.uploaded_at)}</td>
+            <td>
+              <div class="actions-cell">
+                <button class="btn-sm btn-dl" onclick="window.open('/files/${f.id}/download')">⬇</button>
+                <button class="btn-sm btn-del" onclick="deleteFile('${f.id}','${f.filename}')">🗑</button>
+              </div>
+            </td>
+          </tr>
+        `).join('')}
+      </tbody>
+    </table>
+  `;
+}
+
+function toggleSelect(id, checked) {
+  if (checked) selected.add(id); else selected.delete(id);
+  updateBulk();
+}
+
+function toggleAll(checked) {
+  const visible = getFilteredFiles();
+  visible.forEach(f => { if (checked) selected.add(f.id); else selected.delete(f.id); });
+  document.querySelectorAll('tbody .cb').forEach(cb => cb.checked = checked);
+  updateBulk();
+}
+
+function updateBulk() {
+  const btn = $('bulk-delete');
+  const cnt = $('bulk-count');
+  cnt.textContent = selected.size;
+  btn.style.display = selected.size > 0 ? 'inline-block' : 'none';
+}
+
+function getFilteredFiles() {
+  const q = $('search').value.toLowerCase().trim();
+  return q ? allFiles.filter(f => f.filename.toLowerCase().includes(q)) : allFiles;
+}
+
+$('search').addEventListener('input', () => {
+  renderTable(getFilteredFiles());
+});
+
+async function deleteFile(id, name) {
+  if (!confirm(`Hapus "${name}"?`)) return;
+  try {
+    const res = await fetch(`/files/${id}`, { method: 'DELETE' });
+    if (res.ok) {
+      showToast(`🗑️ "${name}" dihapus`, 'success');
+      selected.delete(id);
+      allFiles = allFiles.filter(f => f.id !== id);
+      renderStats();
+      renderTable(getFilteredFiles());
+      updateBulk();
+    } else {
+      const data = await res.json().catch(() => ({}));
+      showToast(data.detail || 'Gagal menghapus', 'error');
+    }
+  } catch {
+    showToast('Error saat menghapus', 'error');
+  }
+}
+
+async function bulkDelete() {
+  if (!selected.size) return;
+  if (!confirm(`Hapus ${selected.size} file?`)) return;
+
+  const ids = [...selected];
+  let ok = 0, fail = 0;
+  for (const id of ids) {
+    try {
+      const res = await fetch(`/files/${id}`, { method: 'DELETE' });
+      if (res.ok) { ok++; allFiles = allFiles.filter(f => f.id !== id); }
+      else fail++;
+    } catch { fail++; }
+  }
+  selected.clear();
+  renderStats();
+  renderTable(getFilteredFiles());
+  updateBulk();
+  showToast(`🗑️ ${ok} file dihapus` + (fail ? `, ${fail} gagal` : ''), fail ? 'error' : 'success');
+}
+
+loadFiles();
+</script>
+</body>
+</html>

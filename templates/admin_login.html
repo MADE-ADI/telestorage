@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Admin Login — TeleStorage</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #0f1117; --surface: #1a1d27; --surface2: #22263a;
+      --border: #2e3350; --accent: #229ED9; --accent-hover: #1a8bc2;
+      --text: #e8eaf0; --muted: #6b7280; --radius: 12px;
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: var(--bg); color: var(--text);
+      min-height: 100vh; display: flex; align-items: center; justify-content: center;
+    }
+    .login-card {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 2.5rem; width: 100%; max-width: 380px;
+      text-align: center;
+    }
+    .login-card .logo { font-size: 2.4rem; margin-bottom: .5rem; }
+    .login-card h1 { font-size: 1.4rem; font-weight: 700; margin-bottom: .3rem; }
+    .login-card p { color: var(--muted); font-size: .88rem; margin-bottom: 1.5rem; }
+    .login-card input[type="password"] {
+      width: 100%; padding: .7rem 1rem; font-size: .95rem;
+      background: var(--surface2); border: 1px solid var(--border);
+      border-radius: 8px; color: var(--text); outline: none;
+      transition: border-color .2s;
+    }
+    .login-card input[type="password"]:focus { border-color: var(--accent); }
+    .login-card button {
+      width: 100%; margin-top: 1rem; padding: .7rem;
+      background: var(--accent); color: #fff; border: none;
+      border-radius: 8px; font-size: .95rem; font-weight: 600;
+      cursor: pointer; transition: background .2s;
+    }
+    .login-card button:hover { background: var(--accent-hover); }
+    .back-link {
+      display: inline-block; margin-top: 1rem;
+      color: var(--muted); font-size: .85rem; text-decoration: none;
+    }
+    .back-link:hover { color: var(--text); }
+  </style>
+</head>
+<body>
+  <form class="login-card" method="POST" action="/admin/login">
+    <div class="logo">🔐</div>
+    <h1>Admin Panel</h1>
+    <p>Masukkan password admin untuk melanjutkan</p>
+    <input type="password" name="password" placeholder="Password" required autofocus />
+    <button type="submit">Login</button>
+    <a href="/" class="back-link">← Kembali ke beranda</a>
+  </form>
+</body>
+</html>

@@ -190,6 +190,42 @@
       animation: spin .7s linear infinite;
     }
     @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Upload Results ── */
+    .upload-results {
+      margin-top: 1.2rem; text-align: left;
+      background: var(--surface2); border-radius: 10px;
+      padding: 1rem; position: relative; z-index: 2;
+    }
+    .upload-results h3 { font-size: .9rem; margin-bottom: .6rem; color: var(--green); }
+    .upload-result-item {
+      display: flex; align-items: center; gap: .5rem;
+      background: var(--surface); border-radius: 8px;
+      padding: .5rem .7rem; margin-bottom: .4rem;
+      font-size: .82rem;
+    }
+    .upload-result-item .ur-name {
+      flex: 1; min-width: 0;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+      font-weight: 600;
+    }
+    .upload-result-item .ur-link {
+      flex: 2; min-width: 0;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+      color: var(--accent); font-size: .78rem;
+    }
+    .upload-result-item .ur-copy {
+      background: var(--accent); color: #fff; border: none;
+      border-radius: 6px; padding: .25rem .6rem;
+      font-size: .75rem; font-weight: 600; cursor: pointer;
+      flex-shrink: 0; transition: background .2s;
+    }
+    .upload-result-item .ur-copy:hover { background: var(--accent-hover); }
+    .close-results {
+      background: none; border: none; color: var(--muted); cursor: pointer;
+      font-size: .8rem; margin-top: .4rem; transition: color .2s;
+    }
+    .close-results:hover { color: var(--text); }
   </style>
 </head>
 <body>
@@ -226,6 +262,9 @@
       <div class="progress-label" id="progress-label">Uploading…</div>
       <div class="progress-speed" id="progress-speed"></div>
     </div>
+
+    <!-- Upload Results -->
+    <div class="upload-results" id="upload-results" style="display:none;"></div>
   </div>
 
   <!-- File List -->
@@ -371,6 +410,7 @@ uploadBtn.addEventListener('click', async e => {
   let done = 0;
   const total = selectedFiles.length;
   const errors = [];
+  const uploadResults = [];
 
   for (const file of selectedFiles) {
     label.textContent = `Mengupload: ${file.name} (${done+1}/${total})`;
@@ -417,6 +457,10 @@ uploadBtn.addEventListener('click', async e => {
         xhr.addEventListener('load', () => {
           fill.classList.remove('pulse');
           if (xhr.status >= 200 && xhr.status < 300) {
+            try {
+              const json = JSON.parse(xhr.responseText);
+              if (json.file) uploadResults.push(json.file);
+            } catch {}
             resolve();
           } else {
             try {
@@ -452,6 +496,11 @@ uploadBtn.addEventListener('click', async e => {
     showToast(`✅ ${total} file berhasil diupload!`, 'success');
   }
 
+  // Show download URLs
+  if (uploadResults.length) {
+    showUploadResults(uploadResults);
+  }
+
   selectedFiles = [];
   fileInput.value = '';
   uploadBtn.disabled = true;
@@ -484,7 +533,6 @@ async function loadFiles() {
         <div class="file-actions">
           <button class="btn-sm btn-dl" onclick="downloadFile('${f.id}','${f.filename}')">⬇ Download</button>
           <button class="btn-sm btn-copy" onclick="copyLink('${f.id}')">🔗 Copy Link</button>
-          <button class="btn-sm btn-del" onclick="deleteFile('${f.id}','${f.filename}')">🗑</button>
         </div>
       </div>
     `).join('');
@@ -510,6 +558,39 @@ function copyLink(id) {
   });
 }
 
+// ── Upload Results ──────────────────────────────────────────────────────────
+function showUploadResults(results) {
+  const el = $('upload-results');
+  el.style.display = 'block';
+  el.innerHTML = `
+    <h3>✅ Upload Berhasil!</h3>
+    ${results.map(f => {
+      const url = `${location.origin}/files/${f.id}/download`;
+      return `
+        <div class="upload-result-item">
+          <span class="ur-name" title="${f.filename}">${f.filename}</span>
+          <span class="ur-link" title="${url}">${url}</span>
+          <button class="ur-copy" onclick="event.stopPropagation(); copyText('${url}')">📋 Copy</button>
+        </div>`;
+    }).join('')}
+    <button class="close-results" onclick="event.stopPropagation(); $('upload-results').style.display='none';">✕ Tutup</button>
+  `;
+}
+
+function copyText(text) {
+  navigator.clipboard.writeText(text).then(() => {
+    showToast('🔗 Link berhasil disalin!', 'success');
+  }).catch(() => {
+    const input = document.createElement('input');
+    input.value = text;
+    document.body.appendChild(input);
+    input.select();
+    document.execCommand('copy');
+    document.body.removeChild(input);
+    showToast('🔗 Link berhasil disalin!', 'success');
+  });
+}
+
 // ── Download ───────────────────────────────────────────────────────────────
 function downloadFile(id, name) {
   showToast(`⏳ Mengambil ${name} dari Telegram…`, 'success');
@@ -517,26 +598,6 @@ function downloadFile(id, name) {
   a.href = `/files/${id}/download`;
   a.download = name;
   a.click();
-}
-
-// ── Delete ─────────────────────────────────────────────────────────────────
-async function deleteFile(id, name) {
-  if (!confirm(`Hapus "${name}" dari daftar?`)) return;
-  try {
-    const res = await fetch(`/files/${id}`, { method: 'DELETE' });
-    if (res.ok) {
-      showToast(`🗑️ "${name}" dihapus`, 'success');
-      const card = document.getElementById(`card-${id}`);
-      if (card) card.remove();
-      const remaining = document.querySelectorAll('.file-card').length;
-      $('file-count').textContent = `${remaining} file`;
-      if (!remaining) loadFiles();
-    } else {
-      showToast('Gagal menghapus file', 'error');
-    }
-  } catch {
-    showToast('Error saat menghapus', 'error');
-  }
 }
 
 // Init
