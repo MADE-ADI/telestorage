@@ -634,7 +634,7 @@ async function loadFiles() {
     }
 
     const folderCards = folders.map(f => `
-      <div class="folder-card" onclick="navigateToFolder('${f.id}')">
+      <div class="folder-card" onclick="window.location.href='/folders/${f.id}'">>
         <div class="folder-emoji">📁</div>
         <div class="folder-info">
           <div class="folder-name" title="${f.name}">${f.name}</div>
@@ -691,7 +691,7 @@ function renderBreadcrumbs(breadcrumbs) {
     const bc = breadcrumbs[i];
     const isLast = i === breadcrumbs.length - 1;
     html += `<span class="crumb-sep">›</span>`;
-    html += `<span class="crumb${isLast ? ' active' : ''}" onclick="navigateToFolder('${bc.id}')">${bc.name}</span>`;
+    html += `<span class="crumb${isLast ? ' active' : ''}" onclick="window.location.href='/folders/${bc.id}'">${bc.name}</span>`;
   }
   $('breadcrumbs').innerHTML = html;
 }

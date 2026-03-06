@@ -134,6 +134,35 @@
     }
     #toast.show { opacity: 1; }
     #toast.success { background: var(--green); color: #fff; }
+    #toast.error { background: var(--red); color: #fff; }
+
+    /* ── Upload Zone ── */
+    .upload-zone {
+      background: var(--surface); border: 2px dashed var(--border);
+      border-radius: var(--radius); padding: 1.5rem;
+      text-align: center; cursor: pointer; transition: border-color .2s, background .2s;
+      margin-bottom: 1.2rem;
+    }
+    .upload-zone.drag-over { border-color: var(--accent); background: rgba(34,158,217,.08); }
+    .upload-zone input[type="file"] { display: none; }
+    .upload-zone p { color: var(--muted); font-size: .85rem; margin-top: .3rem; }
+    .upload-zone .icon { font-size: 1.8rem; }
+    .progress-mini { margin-top: .6rem; }
+    .progress-mini .bar-bg { background: var(--surface2); border-radius: 99px; height: 6px; overflow: hidden; }
+    .progress-mini .bar-fill { height: 100%; background: var(--accent); border-radius: 99px; width: 0; transition: width .3s; }
+    .progress-mini .label { font-size: .78rem; color: var(--muted); margin-top: .3rem; }
+
+    /* ── Toolbar ── */
+    .toolbar {
+      display: flex; gap: .5rem; align-items: center; margin-bottom: 1rem;
+    }
+    .toolbar h3 { flex: 1; font-size: 1rem; font-weight: 600; }
+    .btn-new-folder {
+      background: var(--surface2); color: var(--accent); border: 1px solid var(--border);
+      padding: .35rem .85rem; font-size: .82rem; border-radius: 7px;
+      cursor: pointer; font-weight: 600; transition: all .2s;
+    }
+    .btn-new-folder:hover { background: var(--accent); color: #fff; border-color: var(--accent); }
   </style>
 </head>
 <body>
@@ -180,6 +209,23 @@
       <div class="label">Total Ukuran</div>
       <div class="value" id="total-size">—</div>
     </div>
+  </div>
+
+  <!-- Upload Zone -->
+  <div class="upload-zone" id="drop-zone">
+    <input type="file" id="file-input" multiple />
+    <span class="icon">☁️</span>
+    <p>Drag & drop atau klik untuk upload ke folder ini</p>
+    <div class="progress-mini" id="progress" style="display:none;">
+      <div class="bar-bg"><div class="bar-fill" id="bar-fill"></div></div>
+      <div class="label" id="prog-label">Uploading…</div>
+    </div>
+  </div>
+
+  <!-- Toolbar -->
+  <div class="toolbar">
+    <h3>Isi Folder</h3>
+    <button class="btn-new-folder" onclick="promptNewFolder()">📁+ Subfolder</button>
   </div>
 
   <!-- Items -->
@@ -248,10 +294,10 @@ document.querySelectorAll('.file-emoji[data-mime]').forEach(el => {
 
 // Toast & copy
 let toastTimer;
-function showToast(msg) {
+function showToast(msg, type = 'success') {
   const t = document.getElementById('toast');
   t.textContent = msg;
-  t.className = 'show success';
+  t.className = `show ${type}`;
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => { t.className = ''; }, 2500);
 }
@@ -273,6 +319,91 @@ function copyText(text) {
     document.body.removeChild(inp);
     showToast('🔗 Link disalin!');
   });
+}
+
+// ── Upload ─────────────────────────────────────────────────────────────────
+const FOLDER_ID = '{{ folder.id }}';
+const dropZone = document.getElementById('drop-zone');
+const fileInput = document.getElementById('file-input');
+
+dropZone.addEventListener('click', e => {
+  if (e.target.closest('.progress-mini')) return;
+  fileInput.click();
+});
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+dropZone.addEventListener('dragleave', e => {
+  if (!dropZone.contains(e.relatedTarget)) dropZone.classList.remove('drag-over');
+});
+dropZone.addEventListener('drop', e => {
+  e.preventDefault(); dropZone.classList.remove('drag-over');
+  uploadFiles(Array.from(e.dataTransfer.files));
+});
+fileInput.addEventListener('change', () => {
+  uploadFiles(Array.from(fileInput.files));
+  fileInput.value = '';
+});
+
+async function uploadFiles(files) {
+  if (!files.length) return;
+  const prog = document.getElementById('progress');
+  const fill = document.getElementById('bar-fill');
+  const label = document.getElementById('prog-label');
+  prog.style.display = 'block';
+
+  let done = 0;
+  const total = files.length;
+  let errors = 0;
+
+  for (const file of files) {
+    label.textContent = `Mengupload: ${file.name} (${done+1}/${total})`;
+    fill.style.width = `${(done / total) * 100}%`;
+
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      fd.append('folder_id', FOLDER_ID);
+
+      await new Promise((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.upload.addEventListener('progress', ev => {
+          if (ev.lengthComputable) {
+            const pct = ((done + ev.loaded / ev.total) / total) * 100;
+            fill.style.width = `${pct}%`;
+          }
+        });
+        xhr.addEventListener('load', () => xhr.status >= 200 && xhr.status < 300 ? resolve() : reject());
+        xhr.addEventListener('error', () => reject());
+        xhr.open('POST', '/upload');
+        xhr.send(fd);
+      });
+    } catch { errors++; }
+    done++;
+  }
+
+  fill.style.width = '100%';
+  label.textContent = 'Selesai!';
+  if (errors) showToast(`${errors} file gagal upload`, 'error');
+  else showToast(`✅ ${total} file berhasil diupload!`);
+  setTimeout(() => location.reload(), 1000);
+}
+
+// ── New Subfolder ──────────────────────────────────────────────────────────
+async function promptNewFolder() {
+  const name = prompt('Nama subfolder baru:');
+  if (!name || !name.trim()) return;
+  try {
+    const fd = new FormData();
+    fd.append('name', name.trim());
+    fd.append('parent_id', FOLDER_ID);
+    const res = await fetch('/folders', { method: 'POST', body: fd });
+    if (res.ok) {
+      showToast(`📁 Subfolder "${name.trim()}" dibuat!`);
+      setTimeout(() => location.reload(), 800);
+    } else {
+      const d = await res.json().catch(() => ({}));
+      showToast(d.detail || 'Gagal', 'error');
+    }
+  } catch { showToast('Error', 'error'); }
 }
 </script>
 </body>
