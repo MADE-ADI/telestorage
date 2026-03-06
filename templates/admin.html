@@ -112,6 +112,30 @@
     .empty { text-align: center; padding: 3rem; color: var(--muted); }
     .empty .big { font-size: 3rem; margin-bottom: .5rem; }
 
+    /* ── Breadcrumbs ── */
+    .breadcrumbs {
+      display: flex; align-items: center; gap: .3rem;
+      flex-wrap: wrap; margin-bottom: .8rem; font-size: .85rem;
+    }
+    .crumb {
+      color: var(--accent); cursor: pointer; padding: .15rem .4rem;
+      border-radius: 4px; transition: background .2s;
+    }
+    .crumb:hover { background: var(--surface2); }
+    .crumb.active { color: var(--text); cursor: default; font-weight: 600; }
+    .crumb.active:hover { background: none; }
+    .crumb-sep { color: var(--muted); font-size: .75rem; }
+
+    /* ── Folder Row ── */
+    .folder-row td { cursor: pointer; }
+    .folder-row:hover td { background: var(--surface2); }
+    .btn-new-folder {
+      background: var(--surface2); color: var(--accent); border: 1px solid var(--border);
+      padding: .3rem .7rem; font-size: .78rem; border-radius: 6px;
+      cursor: pointer; font-weight: 600; transition: all .2s;
+    }
+    .btn-new-folder:hover { background: var(--accent); color: #fff; border-color: var(--accent); }
+
     /* ── Checkbox ── */
     .cb { width: 16px; height: 16px; accent-color: var(--accent); cursor: pointer; }
   </style>
@@ -146,9 +170,15 @@
     </div>
   </div>
 
+  <!-- Breadcrumbs -->
+  <div class="breadcrumbs" id="breadcrumbs">
+    <span class="crumb active">📦 Root</span>
+  </div>
+
   <!-- Search & Bulk -->
   <div style="display:flex; gap:.5rem; align-items:center;">
-    <input class="search-bar" id="search" placeholder="🔍 Cari file…" style="margin-bottom:0; flex:1;" />
+    <input class="search-bar" id="search" placeholder="🔍 Cari file di semua folder…" style="margin-bottom:0; flex:1;" />
+    <button class="btn-sm btn-new-folder" onclick="promptNewFolder()">📁+ Folder</button>
     <button class="btn-sm btn-del-all" id="bulk-delete" style="display:none;" onclick="bulkDelete()">🗑 Hapus Terpilih (<span id="bulk-count">0</span>)</button>
   </div>
   <div style="height:.8rem;"></div>
@@ -175,58 +205,127 @@ function showToast(msg, type = 'success') {
 }
 
 let allFiles = [];
+let currentFolders = [];
 let selected = new Set();
+let currentFolderId = null;
+let searchMode = false;
+let searchDebounce = null;
+
+async function loadStats() {
+  try {
+    const res = await fetch('/files?all=true');
+    const { files } = await res.json();
+    allFiles = files;
+    $('stat-count').textContent = allFiles.length;
+    const totalSize = allFiles.reduce((a, f) => a + f.size, 0);
+    $('stat-size').textContent = fmtSize(totalSize);
+  } catch {}
+}
 
 async function loadFiles() {
   try {
-    const res = await fetch('/files');
-    const { files } = await res.json();
-    allFiles = files;
-    renderStats();
-    renderTable(allFiles);
+    const url = currentFolderId ? `/files?folder_id=${currentFolderId}` : '/files';
+    const res = await fetch(url);
+    const data = await res.json();
+    const { files, folders = [], breadcrumbs = [] } = data;
+    currentFolders = folders;
+    renderBreadcrumbs(breadcrumbs);
+    renderTable(folders, files);
+    loadStats();
   } catch {
     $('table-wrap').innerHTML = `<div class="empty"><div class="big">⚠️</div>Gagal memuat daftar file.</div>`;
   }
 }
 
-function renderStats() {
-  $('stat-count').textContent = allFiles.length;
-  const totalSize = allFiles.reduce((a, f) => a + f.size, 0);
-  $('stat-size').textContent = fmtSize(totalSize);
+async function loadSearch(query) {
+  try {
+    const res = await fetch(`/files?search=${encodeURIComponent(query)}`);
+    const { files } = await res.json();
+    $('breadcrumbs').innerHTML = '<span class="crumb active">🔍 Hasil Pencarian</span>';
+    renderTable([], files);
+  } catch {
+    $('table-wrap').innerHTML = `<div class="empty"><div class="big">⚠️</div>Gagal mencari file.</div>`;
+  }
 }
 
-function renderTable(files) {
-  if (!files.length) {
+function renderBreadcrumbs(breadcrumbs) {
+  let html = `<span class="crumb${!currentFolderId ? ' active' : ''}" onclick="navigateToRoot()">📦 Root</span>`;
+  for (let i = 0; i < breadcrumbs.length; i++) {
+    const bc = breadcrumbs[i];
+    const isLast = i === breadcrumbs.length - 1;
+    html += `<span class="crumb-sep">›</span>`;
+    html += `<span class="crumb${isLast ? ' active' : ''}" onclick="navigateToFolder('${bc.id}')">${bc.name}</span>`;
+  }
+  $('breadcrumbs').innerHTML = html;
+}
+
+function navigateToFolder(folderId) {
+  currentFolderId = folderId;
+  searchMode = false;
+  $('search').value = '';
+  selected.clear();
+  updateBulk();
+  loadFiles();
+}
+
+function navigateToRoot() {
+  currentFolderId = null;
+  searchMode = false;
+  $('search').value = '';
+  selected.clear();
+  updateBulk();
+  loadFiles();
+}
+
+function renderTable(folders, files) {
+  if (!folders.length && !files.length) {
     $('table-wrap').innerHTML = `<div class="empty"><div class="big">🗄️</div>Tidak ada file.</div>`;
     return;
   }
+
+  const folderRows = folders.map(f => `
+    <tr class="folder-row" ondblclick="navigateToFolder('${f.id}')">
+      <td></td>
+      <td onclick="navigateToFolder('${f.id}')"><div class="fname" title="${f.name}">📁 ${f.name}</div></td>
+      <td class="fmuted">—</td>
+      <td class="fmuted">${fmtDate(f.created_at)}</td>
+      <td>
+        <div class="actions-cell">
+          <button class="btn-sm btn-dl" onclick="event.stopPropagation(); navigateToFolder('${f.id}')">📂 Buka</button>
+          <button class="btn-sm btn-del" onclick="event.stopPropagation(); deleteFolder('${f.id}','${f.name}')">🗑</button>
+        </div>
+      </td>
+    </tr>
+  `).join('');
+
+  const fileRows = files.map(f => `
+    <tr id="row-${f.id}">
+      <td><input type="checkbox" class="cb" data-id="${f.id}" onchange="toggleSelect('${f.id}', this.checked)" ${selected.has(f.id)?'checked':''} /></td>
+      <td><div class="fname" title="${f.filename}">${f.filename}</div></td>
+      <td class="fmuted">${fmtSize(f.size)}</td>
+      <td class="fmuted">${fmtDate(f.uploaded_at)}</td>
+      <td>
+        <div class="actions-cell">
+          <button class="btn-sm btn-dl" onclick="window.open('/files/${f.id}/download')">⬇</button>
+          <button class="btn-sm btn-del" onclick="deleteFile('${f.id}','${f.filename}')">🗑</button>
+        </div>
+      </td>
+    </tr>
+  `).join('');
 
   $('table-wrap').innerHTML = `
     <table class="file-table">
       <thead>
         <tr>
           <th><input type="checkbox" class="cb" id="select-all" onchange="toggleAll(this.checked)" /></th>
-          <th>Nama File</th>
+          <th>Nama</th>
           <th>Ukuran</th>
           <th>Tanggal</th>
           <th>Aksi</th>
         </tr>
       </thead>
       <tbody>
-        ${files.map(f => `
-          <tr id="row-${f.id}">
-            <td><input type="checkbox" class="cb" data-id="${f.id}" onchange="toggleSelect('${f.id}', this.checked)" ${selected.has(f.id)?'checked':''} /></td>
-            <td><div class="fname" title="${f.filename}">${f.filename}</div></td>
-            <td class="fmuted">${fmtSize(f.size)}</td>
-            <td class="fmuted">${fmtDate(f.uploaded_at)}</td>
-            <td>
-              <div class="actions-cell">
-                <button class="btn-sm btn-dl" onclick="window.open('/files/${f.id}/download')">⬇</button>
-                <button class="btn-sm btn-del" onclick="deleteFile('${f.id}','${f.filename}')">🗑</button>
-              </div>
-            </td>
-          </tr>
-        `).join('')}
+        ${folderRows}${fileRows}
       </tbody>
     </table>
   `;
@@ -238,9 +337,11 @@ function toggleSelect(id, checked) {
 }
 
 function toggleAll(checked) {
-  const visible = getFilteredFiles();
-  visible.forEach(f => { if (checked) selected.add(f.id); else selected.delete(f.id); });
-  document.querySelectorAll('tbody .cb').forEach(cb => cb.checked = checked);
+  document.querySelectorAll('tbody .cb[data-id]').forEach(cb => {
+    const id = cb.dataset.id;
+    if (checked) selected.add(id); else selected.delete(id);
+    cb.checked = checked;
+  });
   updateBulk();
 }
 
@@ -251,13 +352,18 @@ function updateBulk() {
   btn.style.display = selected.size > 0 ? 'inline-block' : 'none';
 }
 
-function getFilteredFiles() {
-  const q = $('search').value.toLowerCase().trim();
-  return q ? allFiles.filter(f => f.filename.toLowerCase().includes(q)) : allFiles;
-}
-
 $('search').addEventListener('input', () => {
-  renderTable(getFilteredFiles());
+  clearTimeout(searchDebounce);
+  const q = $('search').value.trim();
+  searchDebounce = setTimeout(() => {
+    if (q.length > 0) {
+      searchMode = true;
+      loadSearch(q);
+    } else {
+      searchMode = false;
+      loadFiles();
+    }
+  }, 300);
 });
 
 async function deleteFile(id, name) {
@@ -267,16 +373,34 @@ async function deleteFile(id, name) {
     if (res.ok) {
       showToast(`🗑️ "${name}" dihapus`, 'success');
       selected.delete(id);
-      allFiles = allFiles.filter(f => f.id !== id);
-      renderStats();
-      renderTable(getFilteredFiles());
       updateBulk();
+      if (searchMode) {
+        loadSearch($('search').value.trim());
+      } else {
+        loadFiles();
+      }
     } else {
       const data = await res.json().catch(() => ({}));
       showToast(data.detail || 'Gagal menghapus', 'error');
     }
   } catch {
     showToast('Error saat menghapus', 'error');
+  }
+}
+
+async function deleteFolder(id, name) {
+  if (!confirm(`Hapus folder "${name}" dan semua isinya?`)) return;
+  try {
+    const res = await fetch(`/folders/${id}`, { method: 'DELETE' });
+    if (res.ok) {
+      showToast(`🗑️ Folder "${name}" dihapus`, 'success');
+      loadFiles();
+    } else {
+      const data = await res.json().catch(() => ({}));
+      showToast(data.detail || 'Gagal menghapus folder', 'error');
+    }
+  } catch {
+    showToast('Error saat menghapus folder', 'error');
   }
 }
 
@@ -289,15 +413,36 @@ async function bulkDelete() {
   for (const id of ids) {
     try {
       const res = await fetch(`/files/${id}`, { method: 'DELETE' });
-      if (res.ok) { ok++; allFiles = allFiles.filter(f => f.id !== id); }
+      if (res.ok) ok++;
       else fail++;
     } catch { fail++; }
   }
   selected.clear();
-  renderStats();
-  renderTable(getFilteredFiles());
   updateBulk();
+  loadFiles();
   showToast(`🗑️ ${ok} file dihapus` + (fail ? `, ${fail} gagal` : ''), fail ? 'error' : 'success');
+}
+
+async function promptNewFolder() {
+  const name = prompt('Nama folder baru:');
+  if (!name || !name.trim()) return;
+
+  try {
+    const fd = new FormData();
+    fd.append('name', name.trim());
+    if (currentFolderId) fd.append('parent_id', currentFolderId);
+
+    const res = await fetch('/folders', { method: 'POST', body: fd });
+    if (res.ok) {
+      showToast(`📁 Folder "${name.trim()}" dibuat!`, 'success');
+      loadFiles();
+    } else {
+      const data = await res.json().catch(() => ({}));
+      showToast(data.detail || 'Gagal membuat folder', 'error');
+    }
+  } catch {
+    showToast('Error saat membuat folder', 'error');
+  }
 }
 
 loadFiles();

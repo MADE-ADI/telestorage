@@ -181,6 +181,54 @@
     }
     .empty .big { font-size: 3rem; margin-bottom: .8rem; }
 
+    /* ── Search Bar ── */
+    .search-bar {
+      width: 100%; padding: .65rem 1rem; font-size: .9rem;
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 8px; color: var(--text); outline: none;
+      transition: border-color .2s;
+    }
+    .search-bar:focus { border-color: var(--accent); }
+
+    /* ── Breadcrumbs ── */
+    .breadcrumbs {
+      display: flex; align-items: center; gap: .3rem;
+      flex-wrap: wrap; margin-bottom: .8rem;
+      font-size: .85rem;
+    }
+    .crumb {
+      color: var(--accent); cursor: pointer; padding: .15rem .4rem;
+      border-radius: 4px; transition: background .2s;
+    }
+    .crumb:hover { background: var(--surface2); }
+    .crumb.active { color: var(--text); cursor: default; font-weight: 600; }
+    .crumb.active:hover { background: none; }
+    .crumb-sep { color: var(--muted); font-size: .75rem; }
+
+    /* ── Folder Card ── */
+    .folder-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 1rem 1.2rem;
+      display: flex; align-items: center; gap: 1rem;
+      cursor: pointer; transition: border-color .2s;
+    }
+    .folder-card:hover { border-color: var(--accent); }
+    .folder-emoji { font-size: 1.8rem; flex-shrink: 0; width: 2.4rem; text-align: center; }
+    .folder-info { flex: 1; min-width: 0; }
+    .folder-name {
+      font-weight: 600; font-size: .95rem;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .folder-meta { color: var(--muted); font-size: .8rem; margin-top: .2rem; }
+    .btn-new-folder {
+      background: var(--surface2); color: var(--accent); border: 1px solid var(--border);
+      padding: .35rem .85rem; font-size: .82rem; border-radius: 7px;
+      cursor: pointer; font-weight: 600; transition: all .2s;
+    }
+    .btn-new-folder:hover { background: var(--accent); color: #fff; border-color: var(--accent); }
+
     /* ── Spinner ── */
     .spinner {
       width: 20px; height: 20px;
@@ -267,11 +315,26 @@
     <div class="upload-results" id="upload-results" style="display:none;"></div>
   </div>
 
-  <!-- File List -->
-  <div class="section-header">
-    <h2>File Tersimpan</h2>
-    <span class="badge" id="file-count">0 file</span>
+  <!-- Search Bar -->
+  <div style="margin-top: 2.5rem; margin-bottom: 1rem;">
+    <input class="search-bar" id="search-bar" placeholder="🔍 Cari file di semua folder…" />
   </div>
+
+  <!-- Breadcrumbs -->
+  <div class="breadcrumbs" id="breadcrumbs">
+    <span class="crumb active">📦 Root</span>
+  </div>
+
+  <!-- Toolbar -->
+  <div class="section-header">
+    <h2 id="section-title">File Tersimpan</h2>
+    <div style="display:flex; gap:.5rem; align-items:center;">
+      <button class="btn-sm btn-new-folder" onclick="promptNewFolder()">📁+ Folder Baru</button>
+      <span class="badge" id="file-count">0 file</span>
+    </div>
+  </div>
+
+  <!-- File List -->
   <div id="file-list">
     <div class="empty">
       <div class="big">🗄️</div>
@@ -313,6 +376,11 @@ function showToast(msg, type = 'success') {
   toastTimer = setTimeout(() => { t.className = ''; }, 3000);
 }
 
+// ── State ──────────────────────────────────────────────────────────────────
+let currentFolderId = null;
+let searchMode = false;
+let searchDebounce = null;
+
 // ── File Input ─────────────────────────────────────────────────────────────
 const fileInput  = $('file-input');
 const uploadBtn  = $('upload-btn');
@@ -323,7 +391,6 @@ const selectedFilesEl = $('selected-files');
 
 let selectedFiles = [];
 
-// Click card to open file picker (but not when clicking buttons/preview)
 dropZone.addEventListener('click', e => {
   if (e.target.closest('.btn, .clear-all, .sf-remove, .selected-files')) return;
   fileInput.click();
@@ -423,6 +490,7 @@ uploadBtn.addEventListener('click', async e => {
         const xhr = new XMLHttpRequest();
         const fd = new FormData();
         fd.append('file', file);
+        if (currentFolderId) fd.append('folder_id', currentFolderId);
 
         let lastLoaded = 0, lastTime = Date.now();
 
@@ -496,7 +564,6 @@ uploadBtn.addEventListener('click', async e => {
     showToast(`✅ ${total} file berhasil diupload!`, 'success');
   }
 
-  // Show download URLs
   if (uploadResults.length) {
     showUploadResults(uploadResults);
   }
@@ -510,34 +577,142 @@ uploadBtn.addEventListener('click', async e => {
   loadFiles();
 });
 
-// ── Load Files ─────────────────────────────────────────────────────────────
-async function loadFiles() {
+// ── Search ─────────────────────────────────────────────────────────────────
+$('search-bar').addEventListener('input', e => {
+  clearTimeout(searchDebounce);
+  const q = e.target.value.trim();
+  searchDebounce = setTimeout(() => {
+    if (q.length > 0) {
+      searchMode = true;
+      loadSearch(q);
+    } else {
+      searchMode = false;
+      loadFiles();
+    }
+  }, 300);
+});
+
+async function loadSearch(query) {
   const list = $('file-list');
   try {
-    const res = await fetch('/files');
+    const res = await fetch(`/files?search=${encodeURIComponent(query)}`);
     const { files } = await res.json();
+
+    $('breadcrumbs').innerHTML = '<span class="crumb active">🔍 Hasil Pencarian</span>';
+    $('section-title').textContent = `Hasil: "${query}"`;
     $('file-count').textContent = `${files.length} file`;
 
     if (!files.length) {
+      list.innerHTML = `<div class="empty"><div class="big">🔍</div>Tidak ditemukan file dengan nama "${query}"</div>`;
+      return;
+    }
+
+    list.innerHTML = files.map(f => renderFileCard(f)).join('');
+  } catch {
+    list.innerHTML = `<div class="empty"><div class="big">⚠️</div>Gagal mencari file.</div>`;
+  }
+}
+
+// ── Load Files & Folders ───────────────────────────────────────────────────
+async function loadFiles() {
+  const list = $('file-list');
+  try {
+    const url = currentFolderId ? `/files?folder_id=${currentFolderId}` : '/files';
+    const res = await fetch(url);
+    const data = await res.json();
+    const { files, folders = [], breadcrumbs = [] } = data;
+
+    renderBreadcrumbs(breadcrumbs);
+
+    const totalItems = folders.length + files.length;
+    $('file-count').textContent = `${folders.length ? folders.length + ' folder, ' : ''}${files.length} file`;
+    $('section-title').textContent = currentFolderId && breadcrumbs.length ? breadcrumbs[breadcrumbs.length - 1].name : 'File Tersimpan';
+
+    if (!totalItems) {
       list.innerHTML = `<div class="empty"><div class="big">🗄️</div>Belum ada file yang diupload.</div>`;
       return;
     }
 
-    list.innerHTML = files.map(f => `
-      <div class="file-card" id="card-${f.id}">
-        <div class="file-emoji">${fileEmoji(f.mime)}</div>
-        <div class="file-info">
-          <div class="file-name" title="${f.filename}">${f.filename}</div>
-          <div class="file-meta">${fmtSize(f.size)} &nbsp;·&nbsp; ${fmtDate(f.uploaded_at)}</div>
-        </div>
-        <div class="file-actions">
-          <button class="btn-sm btn-dl" onclick="downloadFile('${f.id}','${f.filename}')">⬇ Download</button>
-          <button class="btn-sm btn-copy" onclick="copyLink('${f.id}')">🔗 Copy Link</button>
+    const folderCards = folders.map(f => `
+      <div class="folder-card" onclick="navigateToFolder('${f.id}')">
+        <div class="folder-emoji">📁</div>
+        <div class="folder-info">
+          <div class="folder-name" title="${f.name}">${f.name}</div>
+          <div class="folder-meta">${fmtDate(f.created_at)}</div>
         </div>
       </div>
     `).join('');
+
+    const fileCards = files.map(f => renderFileCard(f)).join('');
+
+    list.innerHTML = folderCards + fileCards;
   } catch {
     list.innerHTML = `<div class="empty"><div class="big">⚠️</div>Gagal memuat daftar file.</div>`;
+  }
+}
+
+function renderFileCard(f) {
+  return `
+    <div class="file-card" id="card-${f.id}">
+      <div class="file-emoji">${fileEmoji(f.mime)}</div>
+      <div class="file-info">
+        <div class="file-name" title="${f.filename}">${f.filename}</div>
+        <div class="file-meta">${fmtSize(f.size)} &nbsp;·&nbsp; ${fmtDate(f.uploaded_at)}</div>
+      </div>
+      <div class="file-actions">
+        <button class="btn-sm btn-dl" onclick="downloadFile('${f.id}','${f.filename}')">⬇ Download</button>
+        <button class="btn-sm btn-copy" onclick="copyLink('${f.id}')">🔗 Copy Link</button>
+      </div>
+    </div>
+  `;
+}
+
+// ── Folder Navigation ──────────────────────────────────────────────────────
+function navigateToFolder(folderId) {
+  currentFolderId = folderId;
+  searchMode = false;
+  $('search-bar').value = '';
+  loadFiles();
+}
+
+function navigateToRoot() {
+  currentFolderId = null;
+  searchMode = false;
+  $('search-bar').value = '';
+  loadFiles();
+}
+
+function renderBreadcrumbs(breadcrumbs) {
+  let html = `<span class="crumb${!currentFolderId ? ' active' : ''}" onclick="navigateToRoot()">📦 Root</span>`;
+  for (let i = 0; i < breadcrumbs.length; i++) {
+    const bc = breadcrumbs[i];
+    const isLast = i === breadcrumbs.length - 1;
+    html += `<span class="crumb-sep">›</span>`;
+    html += `<span class="crumb${isLast ? ' active' : ''}" onclick="navigateToFolder('${bc.id}')">${bc.name}</span>`;
+  }
+  $('breadcrumbs').innerHTML = html;
+}
+
+// ── New Folder ─────────────────────────────────────────────────────────────
+async function promptNewFolder() {
+  const name = prompt('Nama folder baru:');
+  if (!name || !name.trim()) return;
+
+  try {
+    const fd = new FormData();
+    fd.append('name', name.trim());
+    if (currentFolderId) fd.append('parent_id', currentFolderId);
+
+    const res = await fetch('/folders', { method: 'POST', body: fd });
+    if (res.ok) {
+      showToast(`📁 Folder "${name.trim()}" dibuat!`, 'success');
+      loadFiles();
+    } else {
+      const data = await res.json().catch(() => ({}));
+      showToast(data.detail || 'Gagal membuat folder', 'error');
+    }
+  } catch {
+    showToast('Error saat membuat folder', 'error');
   }
 }
 
@@ -547,7 +722,6 @@ function copyLink(id) {
   navigator.clipboard.writeText(url).then(() => {
     showToast('🔗 Link berhasil disalin!', 'success');
   }).catch(() => {
-    // Fallback for non-HTTPS
     const input = document.createElement('input');
     input.value = url;
     document.body.appendChild(input);
