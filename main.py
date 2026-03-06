@@ -503,11 +503,15 @@ async def upload_file(request: Request, file: UploadFile = File(...), folder_id:
     base_url = str(request.base_url).rstrip("/")
     download_url = f"{base_url}/files/{record['id']}/download"
 
-    return JSONResponse({
+    response_data = {
         "success": True,
         "file": record,
         "download_url": download_url,
-    })
+    }
+    if folder_id:
+        response_data["folder_url"] = f"{base_url}/folders/{folder_id}"
+
+    return JSONResponse(response_data)
 
 
 @app.get("/files")
@@ -617,6 +621,7 @@ async def delete_file(file_id: str, admin_token: str | None = Cookie(default=Non
 
 @app.post("/folders")
 async def create_folder(
+    request: Request,
     name: str = Form(...),
     parent_id: str | None = Form(default=None),
 ):
@@ -624,7 +629,9 @@ async def create_folder(
     if not name.strip():
         raise HTTPException(400, "Folder name cannot be empty")
     folder = await db_create_folder(name.strip(), parent_id or None)
-    return JSONResponse({"success": True, "folder": folder})
+    base_url = str(request.base_url).rstrip("/")
+    folder_url = f"{base_url}/folders/{folder['id']}"
+    return JSONResponse({"success": True, "folder": folder, "folder_url": folder_url})
 
 
 @app.delete("/folders/{folder_id}")
@@ -653,6 +660,24 @@ async def rename_folder(folder_id: str, name: str = Form(...)):
     if not folder:
         raise HTTPException(404, "Folder not found")
     return JSONResponse({"success": True, "folder": folder})
+
+
+@app.get("/folders/{folder_id}", response_class=HTMLResponse)
+async def view_folder(request: Request, folder_id: str):
+    """Public folder page — shows folder contents with download links."""
+    folder = await db_get_folder(folder_id)
+    if not folder:
+        raise HTTPException(404, "Folder not found")
+    breadcrumbs = await db_get_folder_breadcrumbs(folder_id)
+    files = await db_get_files(folder_id=folder_id)
+    subfolders = await db_get_folders(folder_id)
+    return templates.TemplateResponse("folder.html", {
+        "request": request,
+        "folder": folder,
+        "breadcrumbs": breadcrumbs,
+        "files": files,
+        "subfolders": subfolders,
+    })
 
 
 # ── Admin Routes ─────────────────────────────────────────────────────────────

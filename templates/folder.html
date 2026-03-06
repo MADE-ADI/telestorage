@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{{ folder.name }} — TeleStorage</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #0f1117; --surface: #1a1d27; --surface2: #22263a;
+      --border: #2e3350; --accent: #229ED9; --accent-hover: #1a8bc2;
+      --green: #26a67d; --red: #e05555;
+      --text: #e8eaf0; --muted: #6b7280; --radius: 12px;
+    }
+    html { font-size: 15px; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: var(--bg); color: var(--text);
+      min-height: 100vh; padding: 2rem 1rem;
+    }
+    .container { max-width: 860px; margin: 0 auto; }
+
+    /* ── Header ── */
+    header { text-align: center; margin-bottom: 2rem; }
+    header .logo { font-size: 2.4rem; margin-bottom: .4rem; }
+    header h1 { font-size: 1.5rem; font-weight: 700; letter-spacing: -.5px; word-break: break-word; }
+    header p { color: var(--muted); margin-top: .4rem; font-size: .9rem; }
+
+    /* ── Breadcrumbs ── */
+    .breadcrumbs {
+      display: flex; align-items: center; gap: .3rem;
+      flex-wrap: wrap; margin-bottom: 1.2rem; font-size: .85rem;
+    }
+    .crumb {
+      color: var(--accent); text-decoration: none; padding: .15rem .4rem;
+      border-radius: 4px; transition: background .2s;
+    }
+    .crumb:hover { background: var(--surface2); }
+    .crumb.active { color: var(--text); cursor: default; font-weight: 600; }
+    .crumb.active:hover { background: none; }
+    .crumb-sep { color: var(--muted); font-size: .75rem; }
+
+    /* ── Stats Bar ── */
+    .stats-bar {
+      display: flex; gap: 1rem; margin-bottom: 1.2rem;
+    }
+    .stat {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: .7rem 1rem; flex: 1;
+    }
+    .stat .label { font-size: .75rem; color: var(--muted); margin-bottom: .15rem; }
+    .stat .value { font-size: 1.1rem; font-weight: 700; }
+
+    /* ── Folder Card ── */
+    .folder-card {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 1rem 1.2rem;
+      display: flex; align-items: center; gap: 1rem;
+      transition: border-color .2s; text-decoration: none; color: var(--text);
+    }
+    .folder-card:hover { border-color: var(--accent); }
+    .folder-emoji { font-size: 1.8rem; flex-shrink: 0; width: 2.4rem; text-align: center; }
+    .folder-name {
+      font-weight: 600; font-size: .95rem;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+
+    /* ── File Card ── */
+    .file-card {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 1rem 1.2rem;
+      display: flex; align-items: center; gap: 1rem;
+      transition: border-color .2s;
+    }
+    .file-card:hover { border-color: var(--accent); }
+    .file-emoji { font-size: 1.8rem; flex-shrink: 0; width: 2.4rem; text-align: center; }
+    .file-info { flex: 1; min-width: 0; }
+    .file-name {
+      font-weight: 600; font-size: .95rem;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .file-meta { color: var(--muted); font-size: .8rem; margin-top: .2rem; }
+    .file-actions { display: flex; gap: .5rem; flex-shrink: 0; }
+
+    .btn-sm {
+      padding: .35rem .85rem; font-size: .82rem; border-radius: 7px;
+      border: none; cursor: pointer; font-weight: 600; transition: background .2s;
+      text-decoration: none; display: inline-flex; align-items: center; gap: .3rem;
+    }
+    .btn-dl { background: var(--accent); color: #fff; }
+    .btn-dl:hover { background: var(--accent-hover); }
+    .btn-copy { background: var(--surface2); color: var(--accent); }
+    .btn-copy:hover { background: var(--accent); color: #fff; }
+
+    .items { display: flex; flex-direction: column; gap: .7rem; }
+
+    .empty {
+      text-align: center; padding: 3rem 1rem;
+      color: var(--muted); font-size: .95rem;
+    }
+    .empty .big { font-size: 3rem; margin-bottom: .8rem; }
+
+    /* ── Copy URL bar ── */
+    .url-bar {
+      display: flex; gap: .5rem; align-items: center;
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 8px; padding: .5rem .8rem; margin-bottom: 1.5rem;
+    }
+    .url-bar input {
+      flex: 1; background: none; border: none; color: var(--text);
+      font-size: .85rem; font-family: monospace; outline: none;
+    }
+    .url-bar button {
+      background: var(--accent); color: #fff; border: none;
+      border-radius: 6px; padding: .35rem .8rem; font-size: .8rem;
+      font-weight: 600; cursor: pointer; flex-shrink: 0;
+      transition: background .2s;
+    }
+    .url-bar button:hover { background: var(--accent-hover); }
+
+    .back-link {
+      display: inline-block; margin-top: 2rem;
+      color: var(--muted); font-size: .85rem; text-decoration: none;
+    }
+    .back-link:hover { color: var(--text); }
+
+    /* ── Toast ── */
+    #toast {
+      position: fixed; bottom: 2rem; right: 2rem;
+      padding: .8rem 1.4rem; border-radius: 10px;
+      font-size: .9rem; font-weight: 500;
+      opacity: 0; pointer-events: none;
+      transition: opacity .3s; z-index: 9999;
+    }
+    #toast.show { opacity: 1; }
+    #toast.success { background: var(--green); color: #fff; }
+  </style>
+</head>
+<body>
+<div class="container">
+
+  <!-- Header -->
+  <header>
+    <div class="logo">📁</div>
+    <h1>{{ folder.name }}</h1>
+    <p>Shared folder — TeleStorage</p>
+  </header>
+
+  <!-- Shareable URL -->
+  <div class="url-bar">
+    <span style="color:var(--muted);font-size:.85rem;">🔗</span>
+    <input type="text" id="folder-url" value="{{ request.url }}" readonly onclick="this.select()" />
+    <button onclick="copyUrl()">📋 Copy</button>
+  </div>
+
+  <!-- Breadcrumbs -->
+  <div class="breadcrumbs">
+    <a class="crumb" href="/">📦 Home</a>
+    {% for bc in breadcrumbs %}
+      <span class="crumb-sep">›</span>
+      {% if loop.last %}
+        <span class="crumb active">{{ bc.name }}</span>
+      {% else %}
+        <a class="crumb" href="/folders/{{ bc.id }}">{{ bc.name }}</a>
+      {% endif %}
+    {% endfor %}
+  </div>
+
+  <!-- Stats -->
+  <div class="stats-bar">
+    <div class="stat">
+      <div class="label">File</div>
+      <div class="value">{{ files | length }}</div>
+    </div>
+    <div class="stat">
+      <div class="label">Subfolder</div>
+      <div class="value">{{ subfolders | length }}</div>
+    </div>
+    <div class="stat">
+      <div class="label">Total Ukuran</div>
+      <div class="value" id="total-size">—</div>
+    </div>
+  </div>
+
+  <!-- Items -->
+  <div class="items">
+    {% for sf in subfolders %}
+    <a class="folder-card" href="/folders/{{ sf.id }}">
+      <div class="folder-emoji">📁</div>
+      <div class="folder-name">{{ sf.name }}</div>
+    </a>
+    {% endfor %}
+
+    {% for f in files %}
+    <div class="file-card">
+      <div class="file-emoji" data-mime="{{ f.mime }}">📄</div>
+      <div class="file-info">
+        <div class="file-name" title="{{ f.filename }}">{{ f.filename }}</div>
+        <div class="file-meta"><span class="fsize" data-size="{{ f.size }}">{{ f.size }}</span> · {{ f.uploaded_at[:19].replace('T', ' ') }}</div>
+      </div>
+      <div class="file-actions">
+        <a class="btn-sm btn-dl" href="/files/{{ f.id }}/download">⬇ Download</a>
+        <button class="btn-sm btn-copy" onclick="copyText('{{ request.base_url.__str__().rstrip('/') }}/files/{{ f.id }}/download')">🔗 Link</button>
+      </div>
+    </div>
+    {% endfor %}
+
+    {% if not files and not subfolders %}
+    <div class="empty">
+      <div class="big">🗄️</div>
+      Folder ini kosong.
+    </div>
+    {% endif %}
+  </div>
+
+  <a href="/" class="back-link">← Kembali ke beranda</a>
+</div>
+
+<div id="toast"></div>
+
+<script>
+const fmtSize = b => b < 1024 ? b + ' B' : b < 1048576 ? (b/1024).toFixed(1) + ' KB' : b < 1073741824 ? (b/1048576).toFixed(1) + ' MB' : (b/1073741824).toFixed(2) + ' GB';
+
+const fileEmoji = mime => {
+  if (!mime) return '📄';
+  if (mime.startsWith('image/')) return '🖼️';
+  if (mime.startsWith('video/')) return '🎬';
+  if (mime.startsWith('audio/')) return '🎵';
+  if (mime.includes('pdf')) return '📕';
+  if (mime.includes('zip') || mime.includes('rar') || mime.includes('7z')) return '🗜️';
+  if (mime.includes('word') || mime.includes('doc')) return '📝';
+  if (mime.includes('text/')) return '📃';
+  return '📄';
+};
+
+// Format file sizes and emojis
+let totalSize = 0;
+document.querySelectorAll('.fsize').forEach(el => {
+  const s = parseInt(el.dataset.size);
+  totalSize += s;
+  el.textContent = fmtSize(s);
+});
+document.getElementById('total-size').textContent = fmtSize(totalSize);
+
+document.querySelectorAll('.file-emoji[data-mime]').forEach(el => {
+  el.textContent = fileEmoji(el.dataset.mime);
+});
+
+// Toast & copy
+let toastTimer;
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = 'show success';
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { t.className = ''; }, 2500);
+}
+
+function copyUrl() {
+  const input = document.getElementById('folder-url');
+  input.select();
+  navigator.clipboard.writeText(input.value).then(() => showToast('🔗 URL folder disalin!')).catch(() => {
+    document.execCommand('copy');
+    showToast('🔗 URL folder disalin!');
+  });
+}
+
+function copyText(text) {
+  navigator.clipboard.writeText(text).then(() => showToast('🔗 Link disalin!')).catch(() => {
+    const inp = document.createElement('input');
+    inp.value = text; document.body.appendChild(inp);
+    inp.select(); document.execCommand('copy');
+    document.body.removeChild(inp);
+    showToast('🔗 Link disalin!');
+  });
+}
+</script>
+</body>
+</html>

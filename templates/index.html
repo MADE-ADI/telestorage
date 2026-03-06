@@ -640,6 +640,9 @@ async function loadFiles() {
           <div class="folder-name" title="${f.name}">${f.name}</div>
           <div class="folder-meta">${fmtDate(f.created_at)}</div>
         </div>
+        <div class="file-actions">
+          <button class="btn-sm btn-copy" onclick="event.stopPropagation(); copyText('${location.origin}/folders/${f.id}')">🔗 Share</button>
+        </div>
       </div>
     `).join('');
 
