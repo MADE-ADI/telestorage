@@ -93,14 +93,14 @@ async def init_db():
         await db.execute(
             "CREATE INDEX IF NOT EXISTS idx_parts_file ON file_parts(file_id)"
         )
-        await db.execute(
-            "CREATE INDEX IF NOT EXISTS idx_files_folder ON files(folder_id)"
-        )
         # Add folder_id column if migrating from old schema
         try:
             await db.execute("ALTER TABLE files ADD COLUMN folder_id TEXT REFERENCES folders(id) ON DELETE CASCADE")
         except Exception:
             pass  # column already exists
+        await db.execute(
+            "CREATE INDEX IF NOT EXISTS idx_files_folder ON files(folder_id)"
+        )
         await db.commit()
 
 
